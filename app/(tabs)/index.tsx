@@ -1,98 +1,464 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+// app/(tabs)/index.tsx
+import {
+  FontAwesome5,
+  Ionicons,
+  MaterialCommunityIcons,
+} from "@expo/vector-icons";
+import { Buffer } from "buffer";
+import * as Haptics from "expo-haptics";
+import React, { useState } from "react";
+import {
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { TVConfig, tvService } from "../services/tvService";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+global.Buffer = Buffer;
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [ipInput, setIpInput] = useState("");
+  const [isScanning, setIsScanning] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [discoveredTVs, setDiscoveredTVs] = useState<TVConfig[]>([]);
+  const [selectedTV, setSelectedTV] = useState<TVConfig | null>(null);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const toggleDropdown = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsDropdownOpen(!isDropdownOpen);
+  };
+
+  const handleScan = async () => {
+    setIsScanning(true);
+    setDiscoveredTVs([]);
+    const tvs = await tvService.scanNetwork();
+    setDiscoveredTVs(tvs);
+    setIsScanning(false);
+    if (tvs.length > 0)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleManualConnect = async () => {
+    if (!ipInput) return;
+    const tv = await tvService.connectToIP(ipInput);
+    if (tv) {
+      setSelectedTV(tv);
+      setIsDropdownOpen(false);
+    } else {
+      alert("IP não encontrado.");
+    }
+  };
+
+  const handlePress = (btn: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (selectedTV) tvService.sendCommand(selectedTV, btn);
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" />
+
+      <View style={styles.headerContainer}>
+        <TouchableOpacity
+          style={styles.dropdownTrigger}
+          onPress={toggleDropdown}
+        >
+          <MaterialCommunityIcons
+            name={selectedTV ? "television" : ("television-off" as any)}
+            size={20}
+            color={selectedTV ? "#4cd964" : "#666"}
+          />
+          <Text style={styles.dropdownTriggerText}>
+            {selectedTV ? selectedTV.name : "Selecionar Dispositivo"}
+          </Text>
+          <Ionicons
+            name={isDropdownOpen ? "chevron-up" : "chevron-down"}
+            size={18}
+            color="#666"
+          />
+        </TouchableOpacity>
+
+        {isDropdownOpen && (
+          <View style={styles.dropdownContent}>
+            <TouchableOpacity
+              style={[styles.scanBtn, isScanning && { opacity: 0.6 }]}
+              onPress={handleScan}
+              disabled={isScanning}
+            >
+              {isScanning ? (
+                <ActivityIndicator color="black" />
+              ) : (
+                <Text style={styles.scanBtnText}>VARRER REDE (AUTO)</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.manualRow}>
+              <TextInput
+                style={styles.input}
+                placeholder="IP da TV"
+                placeholderTextColor="#444"
+                value={ipInput}
+                onChangeText={setIpInput}
+                keyboardType="numeric"
+              />
+              <TouchableOpacity
+                style={styles.connectBtn}
+                onPress={handleManualConnect}
+              >
+                <Ionicons name="arrow-forward" size={20} color="black" />
+              </TouchableOpacity>
+            </View>
+
+            {discoveredTVs.map((tv) => (
+              <TouchableOpacity
+                key={tv.ip}
+                style={styles.tvItem}
+                onPress={() => {
+                  setSelectedTV(tv);
+                  setIsDropdownOpen(false);
+                }}
+              >
+                <Text style={styles.tvItemText}>{tv.name}</Text>
+                <Ionicons name="checkmark-circle" size={18} color="#4cd964" />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
+
+      <ScrollView contentContainerStyle={styles.container}>
+        <View style={[styles.remoteBody, !selectedTV && { opacity: 0.2 }]}>
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              style={styles.powerBtn}
+              onPress={() => handlePress("Power")}
+            >
+              <MaterialCommunityIcons name="power" size={32} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.sourceBtn}
+              onPress={() => handlePress("Source")}
+            >
+              <Text style={styles.sourceText}>Source</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.mainControlsRow}>
+            <View style={styles.pill}>
+              <TouchableOpacity
+                style={styles.pillBtn}
+                onPress={() => handlePress("Vol+")}
+              >
+                <Ionicons name="add" size={28} color="white" />
+              </TouchableOpacity>
+              <Text style={styles.pillLabel}>VOL</Text>
+              <TouchableOpacity
+                style={styles.pillBtn}
+                onPress={() => handlePress("Vol-")}
+              >
+                <Ionicons name="remove" size={28} color="white" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.centerStack}>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => handlePress("Home")}
+              >
+                <Ionicons name="home" size={22} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => handlePress("Mute")}
+              >
+                <MaterialCommunityIcons
+                  name="volume-mute"
+                  size={22}
+                  color="white"
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.iconBtn}
+                onPress={() => handlePress("Back")}
+              >
+                <MaterialCommunityIcons
+                  name="keyboard-return"
+                  size={22}
+                  color="white"
+                />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pill}>
+              <TouchableOpacity
+                style={styles.pillBtn}
+                onPress={() => handlePress("Ch+")}
+              >
+                <Ionicons name="chevron-up" size={28} color="white" />
+              </TouchableOpacity>
+              <Text style={styles.pillLabel}>CH</Text>
+              <TouchableOpacity
+                style={styles.pillBtn}
+                onPress={() => handlePress("Ch-")}
+              >
+                <Ionicons name="chevron-down" size={28} color="white" />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.dpadContainer}>
+            <TouchableOpacity
+              style={styles.dpadSide}
+              onPress={() => handlePress("Left")}
+            >
+              <Ionicons name="chevron-back" size={28} color="white" />
+            </TouchableOpacity>
+            <View style={styles.dpadCenter}>
+              <TouchableOpacity
+                style={styles.dpadUp}
+                onPress={() => handlePress("Up")}
+              >
+                <Ionicons name="chevron-up" size={28} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.okBtn}
+                onPress={() => handlePress("OK")}
+              >
+                <Ionicons name="radio-button-on" size={32} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.dpadDown}
+                onPress={() => handlePress("Down")}
+              >
+                <Ionicons name="chevron-down" size={28} color="white" />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.dpadSide}
+              onPress={() => handlePress("Right")}
+            >
+              <Ionicons name="chevron-forward" size={28} color="white" />
+            </TouchableOpacity>
+          </View>
+
+          {/* NOVA ORDEM DAS APPS: Netflix, YouTube, Twitch, Spotify */}
+          <View style={styles.appsRow}>
+            <TouchableOpacity
+              style={styles.appBtn}
+              onPress={() => handlePress("Netflix")}
+            >
+              <MaterialCommunityIcons
+                name="netflix"
+                size={24}
+                color="#E50914"
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.appBtn}
+              onPress={() => handlePress("YouTube")}
+            >
+              <Ionicons name="logo-youtube" size={24} color="#FF0000" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.appBtn}
+              onPress={() => handlePress("Twitch")}
+            >
+              <FontAwesome5 name="twitch" size={20} color="#9146FF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.appBtn}
+              onPress={() => handlePress("Spotify")}
+            >
+              <FontAwesome5 name="spotify" size={26} color="#1DB954" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  safeArea: { flex: 1, backgroundColor: "#0F0F0F" },
+  headerContainer: {
+    width: "100%",
+    zIndex: 10,
+    backgroundColor: "#151515",
+    borderBottomWidth: 1,
+    borderBottomColor: "#222",
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  dropdownTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 15,
+    gap: 10,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  dropdownTriggerText: { color: "white", fontWeight: "bold", fontSize: 13 },
+  dropdownContent: {
+    backgroundColor: "#1A1A1A",
+    padding: 20,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+    gap: 15,
+  },
+  scanBtn: {
+    backgroundColor: "#4cd964",
+    padding: 15,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  scanBtnText: { color: "black", fontWeight: "bold", fontSize: 12 },
+  manualRow: { flexDirection: "row", gap: 10 },
+  input: {
+    flex: 1,
+    backgroundColor: "#000",
+    color: "white",
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#333",
+  },
+  connectBtn: {
+    backgroundColor: "#4cd964",
+    width: 50,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tvItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#000",
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#222",
+  },
+  tvItemText: { color: "white", fontSize: 12, fontWeight: "bold" },
+  container: { flexGrow: 1, alignItems: "center", paddingVertical: 10 },
+  remoteBody: {
+    flex: 1,
+    width: "84%",
+    justifyContent: "space-around",
+    minHeight: 600,
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  powerBtn: {
+    backgroundColor: "#FF3B30",
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sourceBtn: {
+    backgroundColor: "#1A1A1A",
+    paddingVertical: 12,
+    paddingHorizontal: 25,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#444",
+  },
+  sourceText: { color: "white", fontWeight: "bold" },
+  mainControlsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    height: 180,
+  },
+  pill: {
+    backgroundColor: "#1A1A1A",
+    width: 70,
+    borderRadius: 35,
+    borderWidth: 1.5,
+    borderColor: "#333",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 15,
+  },
+  pillBtn: { width: "100%", alignItems: "center" },
+  pillLabel: { color: "#555", fontSize: 12, fontWeight: "bold" },
+  centerStack: { justifyContent: "space-between", paddingVertical: 5 },
+  iconBtn: {
+    backgroundColor: "#1A1A1A",
+    width: 55,
+    height: 55,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: "#333",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dpadContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 20,
+  },
+  dpadCenter: { gap: 15, alignItems: "center" },
+  dpadSide: {
+    backgroundColor: "#1A1A1A",
+    width: 65,
+    height: 65,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: "#333",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dpadUp: {
+    backgroundColor: "#1A1A1A",
+    width: 65,
+    height: 55,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: "#333",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dpadDown: {
+    backgroundColor: "#1A1A1A",
+    width: 65,
+    height: 55,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: "#333",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  okBtn: {
+    backgroundColor: "#1A1A1A",
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 1.5,
+    borderColor: "#333",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  appsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 15,
+    marginTop: 10,
+  },
+  appBtn: {
+    backgroundColor: "#1A1A1A",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 1.5,
+    borderColor: "#333",
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
